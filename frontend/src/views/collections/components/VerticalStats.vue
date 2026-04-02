@@ -77,11 +77,13 @@ interface Stats {
   ignored: number
 }
 
+type StatsKey = Exclude<keyof Stats, 'total'>
+
 interface Props {
   stats: Stats
 }
 
-const props = defineProps<Props>()
+const { stats } = defineProps<Props>()
 
 const emit = defineEmits<{
   'filter-change': [status: string]
@@ -90,7 +92,7 @@ const emit = defineEmits<{
 
 const activeStatus = ref('')
 
-const statsList = [
+const statsList: Array<{ key: StatsKey; label: string; color: string }> = [
   { key: 'pending', label: '待认领', color: '#e6a23c' },
   { key: 'claimed', label: '已认领', color: '#409eff' },
   { key: 'editing', label: '编辑中', color: '#67c23a' },

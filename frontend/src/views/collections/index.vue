@@ -258,7 +258,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Link, Search, Check, Edit, Delete, Picture } from '@element-plus/icons-vue'
+import { Search, Check, Edit, Delete, Picture } from '@element-plus/icons-vue'
 import type { CollectedProduct, CollectionConfig } from '@/types/collections'
 
 import CollectionInput from './components/CollectionInput.vue'
