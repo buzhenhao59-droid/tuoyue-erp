@@ -299,11 +299,11 @@ function handleSelectionChange(rows: CollectedProduct[]) {
   selectedProducts.value = rows
 }
 
-function handleSelectAll(val: boolean) {
-  // 全选逻辑
+function handleSelectAll() {
+  // 全选逻辑待接入表格实例，这里保留状态切换入口
 }
 
-function collectProduct(row: any) {
+function collectProduct(_row: any) {
   ElMessage.success('已添加到采集队列')
 }
 

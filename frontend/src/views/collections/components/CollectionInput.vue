@@ -115,7 +115,7 @@ interface Props {
   autoClaim: boolean
 }
 
-const props = defineProps<Props>()
+defineProps<Props>()
 
 const emit = defineEmits<{
   'update:urlsText': [value: string]
@@ -125,7 +125,15 @@ const emit = defineEmits<{
 }>()
 
 // 平台矩阵数据 - 妙手 ERP 完整平台列表
-const platforms = [
+interface PlatformItem {
+  code: string
+  name: string
+  icon: string
+  color: string
+  logo?: string
+}
+
+const platforms: PlatformItem[] = [
   { code: '1688', name: '1688', icon: '1688', color: '#FF6A00' },
   { code: 'taobao', name: '淘宝', icon: '淘', color: '#FF5000' },
   { code: 'tmall', name: '天猫', icon: '猫', color: '#FF0036' },

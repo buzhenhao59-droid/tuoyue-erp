@@ -306,7 +306,15 @@ const isEdit = ref(false)
 const submitting = ref(false)
 const formRef = ref<FormInstance>()
 
-const form = reactive<Partial<CollectionConfig>>({
+type KeywordFilter = NonNullable<CollectionConfig['keyword_filter']>
+
+type CollectionConfigForm = Partial<CollectionConfig> & {
+  keyword_filter: KeywordFilter
+}
+
+const createDefaultKeywordFilter = (): KeywordFilter => ({ include: [], exclude: [] })
+
+const form = reactive<CollectionConfigForm>({
   name: '',
   price_rule: 'fixed',
   price_multiplier: 1.5,
@@ -319,7 +327,7 @@ const form = reactive<Partial<CollectionConfig>>({
   watermark_remove: false,
   image_compress: true,
   default_stock: 999,
-  keyword_filter: { include: [], exclude: [] },
+  keyword_filter: createDefaultKeywordFilter(),
   is_default: false,
   tier_rules: [],
   price_formula: '',
@@ -344,7 +352,7 @@ function resetForm() {
   form.watermark_remove = false
   form.image_compress = true
   form.default_stock = 999
-  form.keyword_filter = { include: [], exclude: [] }
+  form.keyword_filter = createDefaultKeywordFilter()
   form.is_default = false
   form.tier_rules = []
   form.price_formula = ''
@@ -370,7 +378,9 @@ function handleCreate() {
 
 function handleEdit(row: CollectionConfig) {
   isEdit.value = true
-  Object.assign(form, row)
+  Object.assign(form, row, {
+    keyword_filter: row.keyword_filter ?? createDefaultKeywordFilter(),
+  })
   dialogVisible.value = true
 }
 
