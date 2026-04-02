@@ -1,0 +1,220 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_BACKEND: ${{ github.repository_owner }}/tuoyue-erp-backend
+  IMAGE_FRONTEND: ${{ github.repository_owner }}/tuoyue-erp-frontend
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (backend)
+        id: meta_backend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_BACKEND }}
+          tags: |
+            type=raw,value=latest
+            type=sha
+
+      - name: Extract metadata (frontend)
+        id: meta_frontend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_FRONTEND }}
+          tags: |
+            type=raw,value=latest
+            type=sha
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./tuoyue-erp/backend
+          file: ./tuoyue-erp/backend/Dockerfile
+          target: prod
+          push: true
+          tags: ${{ steps.meta_backend.outputs.tags }}
+          labels: ${{ steps.meta_backend.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./tuoyue-erp/frontend
+          file: ./tuoyue-erp/frontend/Dockerfile
+          target: prod
+          build-args: |
+            VITE_API_BASE_URL=/api
+          push: true
+          tags: ${{ steps.meta_frontend.outputs.tags }}
+          labels: ${{ steps.meta_frontend.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: docker
+
+    steps:
+      - name: Deploy to server via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          BACKEND_IMAGE: ghcr.io/${{ env.IMAGE_BACKEND }}:latest
+          FRONTEND_IMAGE: ghcr.io/${{ env.IMAGE_FRONTEND }}:latest
+          APP_DIR: ${{ secrets.SERVER_APP_DIR }}
+          APP_PORT: ${{ secrets.APP_PORT }}
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          ALLOWED_HOSTS: ${{ secrets.ALLOWED_HOSTS }}
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: ${{ secrets.SERVER_PORT }}
+          envs: BACKEND_IMAGE,FRONTEND_IMAGE,APP_DIR,APP_PORT,SECRET_KEY,DB_NAME,DB_USER,DB_PASSWORD,ALLOWED_HOSTS
+          script: |
+            set -eu
+            mkdir -p "$APP_DIR"
+            cd "$APP_DIR"
+
+            cat > docker-compose.prod.yml <<'EOF'
+            services:
+              mysql:
+                image: mysql:8.0
+                restart: unless-stopped
+                environment:
+                  MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+                  MYSQL_DATABASE: ${DB_NAME}
+                command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+                volumes:
+                  - mysql_data:/var/lib/mysql
+
+              redis:
+                image: redis:7-alpine
+                restart: unless-stopped
+                command: ["redis-server", "--appendonly", "yes"]
+                volumes:
+                  - redis_data:/data
+
+              backend:
+                image: ${BACKEND_IMAGE}
+                restart: unless-stopped
+                environment:
+                  SECRET_KEY: ${SECRET_KEY}
+                  DEBUG: False
+                  ALLOWED_HOSTS: ${ALLOWED_HOSTS}
+                  DB_HOST: mysql
+                  DB_NAME: ${DB_NAME}
+                  DB_USER: ${DB_USER}
+                  DB_PASSWORD: ${DB_PASSWORD}
+                  DB_PORT: 3306
+                  REDIS_URL: redis://redis:6379/0
+                depends_on:
+                  - mysql
+                  - redis
+                volumes:
+                  - static_volume:/app/static
+                  - media_volume:/app/media
+                  - logs_volume:/app/logs
+
+              frontend:
+                image: ${FRONTEND_IMAGE}
+                restart: unless-stopped
+
+              nginx:
+                image: nginx:1.27-alpine
+                restart: unless-stopped
+                ports:
+                  - "${APP_PORT:-80}:80"
+                depends_on:
+                  - backend
+                  - frontend
+                volumes:
+                  - static_volume:/app/static:ro
+                  - media_volume:/app/media:ro
+                  - ./nginx.conf:/etc/nginx/nginx.conf:ro
+
+            volumes:
+              mysql_data:
+              redis_data:
+              static_volume:
+              media_volume:
+              logs_volume:
+            EOF
+
+            cat > nginx.conf <<'EOF'
+            events {}
+            http {
+              include /etc/nginx/mime.types;
+              upstream backend { server backend:8000; }
+              upstream frontend { server frontend:80; }
+              server {
+                listen 80;
+                location /static/ { alias /app/static/; }
+                location /media/ { alias /app/media/; }
+                location /api/ {
+                  proxy_pass http://backend;
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+                }
+                location /admin/ {
+                  proxy_pass http://backend;
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+                }
+                location / {
+                  proxy_pass http://frontend;
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+                }
+              }
+            }
+            EOF
+
+            cat > .env <<EOF
+            BACKEND_IMAGE=${BACKEND_IMAGE}
+            FRONTEND_IMAGE=${FRONTEND_IMAGE}
+            SECRET_KEY=${SECRET_KEY}
+            DB_NAME=${DB_NAME}
+            DB_USER=${DB_USER}
+            DB_PASSWORD=${DB_PASSWORD}
+            ALLOWED_HOSTS=${ALLOWED_HOSTS}
+            APP_PORT=${APP_PORT}
+            EOF
+
+            docker login ghcr.io -u "${{ github.actor }}" -p "${{ secrets.GITHUB_TOKEN }}"
+            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml up -d
+            docker image prune -f

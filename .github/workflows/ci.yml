@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root123
+          MYSQL_DATABASE: tuoyue_erp
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -proot123"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: tuoyue-erp/backend/requirements.txt
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: tuoyue-erp/frontend/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: tuoyue-erp/backend
+        run: pip install -r requirements.txt
+
+      - name: Backend checks
+        working-directory: tuoyue-erp/backend
+        env:
+          SECRET_KEY: ci-secret-key
+          DEBUG: 'False'
+          ALLOWED_HOSTS: localhost,127.0.0.1
+          DB_HOST: 127.0.0.1
+          DB_NAME: tuoyue_erp
+          DB_USER: root
+          DB_PASSWORD: root123
+          DB_PORT: 3306
+          REDIS_URL: redis://127.0.0.1:6379/0
+        run: |
+          python manage.py migrate --noinput
+          python manage.py check
+
+      - name: Install frontend dependencies
+        working-directory: tuoyue-erp/frontend
+        run: npm ci
+
+      - name: Frontend build
+        working-directory: tuoyue-erp/frontend
+        env:
+          VITE_API_BASE_URL: /api
+        run: npm run build
