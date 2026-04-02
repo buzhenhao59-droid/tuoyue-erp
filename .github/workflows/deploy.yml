@@ -52,8 +52,8 @@ jobs:
       - name: Build and push backend image
         uses: docker/build-push-action@v6
         with:
-          context: ./tuoyue-erp/backend
-          file: ./tuoyue-erp/backend/Dockerfile
+          context: ./backend
+          file: ./backend/Dockerfile
           target: prod
           push: true
           tags: ${{ steps.meta_backend.outputs.tags }}
@@ -64,8 +64,8 @@ jobs:
       - name: Build and push frontend image
         uses: docker/build-push-action@v6
         with:
-          context: ./tuoyue-erp/frontend
-          file: ./tuoyue-erp/frontend/Dockerfile
+          context: ./frontend
+          file: ./frontend/Dockerfile
           target: prod
           build-args: |
             VITE_API_BASE_URL=/api

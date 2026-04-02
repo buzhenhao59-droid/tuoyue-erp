@@ -41,21 +41,21 @@ jobs:
         with:
           python-version: '3.11'
           cache: 'pip'
-          cache-dependency-path: tuoyue-erp/backend/requirements.txt
+          cache-dependency-path: backend/requirements.txt
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: tuoyue-erp/frontend/package-lock.json
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Install backend dependencies
-        working-directory: tuoyue-erp/backend
+        working-directory: backend
         run: pip install -r requirements.txt
 
       - name: Backend checks
-        working-directory: tuoyue-erp/backend
+        working-directory: backend
         env:
           SECRET_KEY: ci-secret-key
           DEBUG: 'False'
@@ -71,11 +71,11 @@ jobs:
           python manage.py check
 
       - name: Install frontend dependencies
-        working-directory: tuoyue-erp/frontend
+        working-directory: frontend
         run: npm ci
 
       - name: Frontend build
-        working-directory: tuoyue-erp/frontend
+        working-directory: frontend
         env:
           VITE_API_BASE_URL: /api
         run: npm run build
